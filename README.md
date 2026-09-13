@@ -7,3 +7,4 @@ https://doandoanphuocbaongoc.atlassian.net/jira/software/projects/KAN/list?jql=p
 24698691	Nguyễn Chí Bảo
 24691281	Chiêm Bảo Minh
 24692231	Đoàn Phước Bảo Ngọc
+24658471  Huỳnh Nhật Minh Anh
