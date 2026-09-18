@@ -1,0 +1,146 @@
+from __future__ import annotations
+ 
+from pathlib import Path
+ 
+import pandas as pd
+ 
+BRONZE_PATH = Path("bronze/customers.csv")
+REPORT_DIR = Path("silver/_reports")
+REPORT_MD = REPORT_DIR / "customers_dq_report.md"
+ISSUES_CSV = REPORT_DIR / "customers_dq_issues.csv"
+ 
+PRIMARY_KEY = "customer_id"
+VALID_GENDER = {"Female", "Male", "Non-binary"}
+VALID_AGE_GROUP = {"18-24", "25-34", "35-44", "45-54", "55+"}
+VALID_CHANNEL = {"social_media", "email_campaign", "organic_search", "referral", "direct", "paid_search"}
+MIN_SIGNUP_DATE = pd.Timestamp("2000-01-01")
+ 
+lines: list[str] = []
+ 
+ 
+def log(text: str = "") -> None:
+    print(text)
+    lines.append(text)
+ 
+ 
+def section(title: str) -> None:
+    log()
+    log(f"## {title}")
+    log()
+ 
+ 
+def check_key(df: pd.DataFrame) -> pd.DataFrame:
+    section("1. Kiem tra khoa customer_id (gia tri am / trung lap / NULL)")
+    neg = (df[PRIMARY_KEY] < 0).sum()
+    null = df[PRIMARY_KEY].isna().sum()
+    dup = df[PRIMARY_KEY].duplicated().sum()
+    log(f"- Gia tri am: {neg}")
+    log(f"- Gia tri NULL: {null}")
+    log(f"- Gia tri trung lap: {dup}")
+    verdict = "DAT" if neg == 0 and null == 0 and dup == 0 else "KHONG DAT"
+    log(f"> Ket luan: customer_id {verdict} dieu kien khoa chinh.")
+    bad = df[(df[PRIMARY_KEY] < 0) | df[PRIMARY_KEY].isna() | df[PRIMARY_KEY].duplicated(keep=False)]
+    return pd.DataFrame({"check": "key_issue", "column": PRIMARY_KEY,
+                          PRIMARY_KEY: bad[PRIMARY_KEY], "value": bad[PRIMARY_KEY], "note": "Am/NULL/trung"})
+ 
+ 
+def check_zip(df: pd.DataFrame) -> pd.DataFrame:
+    section("2. Kiem tra cot zip")
+    zip_str = df["zip"].astype(str)
+    bad_len = zip_str.str.len().ne(5)
+    log(f"- Tong so gia tri distinct: {df['zip'].nunique()}")
+    log(f"- So dong zip khong du 5 ky tu: {int(bad_len.sum())}")
+    log(f"- Zip min/max: {df['zip'].min()} - {df['zip'].max()}")
+    bad = df[bad_len]
+    return pd.DataFrame({"check": "invalid_zip", "column": "zip",
+                          PRIMARY_KEY: bad[PRIMARY_KEY], "value": bad["zip"], "note": "Khong du 5 ky tu"})
+ 
+ 
+def check_domains(df: pd.DataFrame) -> pd.DataFrame:
+    section("3. Kiem tra domain: gender / age_group / acquisition_channel")
+    rows = []
+    for col, valid in [("gender", VALID_GENDER), ("age_group", VALID_AGE_GROUP),
+                        ("acquisition_channel", VALID_CHANNEL)]:
+        vc = df[col].value_counts(dropna=False)
+        log(f"**`{col}`** ({df[col].nunique(dropna=False)} distinct):")
+        log(vc.rename_axis(col).reset_index(name="so_dong").to_markdown(index=False))
+        log()
+        invalid = df[~df[col].isin(valid)]
+        log(f"- So dong ngoai domain hop le: {len(invalid)}")
+        if len(invalid):
+            rows.append(pd.DataFrame({"check": f"invalid_{col}", "column": col,
+                                       PRIMARY_KEY: invalid[PRIMARY_KEY], "value": invalid[col],
+                                       "note": "Ngoai danh sach gia tri hop le"}))
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+ 
+ 
+def check_signup_date(df: pd.DataFrame) -> pd.DataFrame:
+    section("4. Kiem tra cot signup_date")
+    dt = pd.to_datetime(df["signup_date"], errors="coerce")
+    today = pd.Timestamp.today()
+    future = dt > today
+    too_old = dt < MIN_SIGNUP_DATE
+    invalid_parse = dt.isna()
+    log(f"- Khoang thoi gian: {dt.min():%Y-%m-%d} den {dt.max():%Y-%m-%d}")
+    log(f"- So dong ngay khong parse duoc: {int(invalid_parse.sum())}")
+    log(f"- So dong ngay trong tuong lai: {int(future.sum())}")
+    log(f"- So dong ngay qua cu (truoc {MIN_SIGNUP_DATE:%Y-%m-%d}): {int(too_old.sum())}")
+    bad = df[invalid_parse | future | too_old]
+    return pd.DataFrame({"check": "invalid_signup_date", "column": "signup_date",
+                          PRIMARY_KEY: bad[PRIMARY_KEY], "value": df.loc[bad.index, "signup_date"],
+                          "note": "Khong parse duoc / tuong lai / qua cu"})
+ 
+ 
+def check_distinct(df: pd.DataFrame) -> None:
+    section("5. Kiem tra cac gia tri rieng biet (distinct)")
+    prof = pd.DataFrame({
+        "cot": df.columns,
+        "so_distinct": [df[c].nunique(dropna=False) for c in df.columns],
+        "so_null": [int(df[c].isna().sum()) for c in df.columns],
+    })
+    log(prof.to_markdown(index=False))
+ 
+ 
+def check_missing_summary(df: pd.DataFrame) -> None:
+    section("6. Tong hop missing values toan bang")
+    null_counts = df.isna().sum()
+    log(null_counts.rename("so_null").to_frame().to_markdown())
+    log()
+    log(f"- Tong so dong: {len(df)} | So dong khong bi thieu du lieu nao: "
+        f"{int((~df.isna().any(axis=1)).sum())}")
+ 
+ 
+def main(bronze_path: Path = BRONZE_PATH) -> None:
+    df = pd.read_csv(bronze_path, encoding="utf-8-sig")
+    log(f"# BAO CAO CHAT LUONG DU LIEU - {bronze_path.name}")
+    log()
+    log(f"- Kich thuoc: {df.shape[0]} dong x {df.shape[1]} cot")
+    log(f"- Ngay chay: {pd.Timestamp.today():%Y-%m-%d %H:%M}")
+ 
+    i1 = check_key(df)
+    i2 = check_zip(df)
+    i3 = check_domains(df)
+    i4 = check_signup_date(df)
+    check_distinct(df)
+    check_missing_summary(df)
+ 
+    non_empty = [x for x in [i1, i2, i3, i4] if len(x)]
+    issues = pd.concat(non_empty, ignore_index=True) if non_empty else pd.DataFrame(columns=["check", PRIMARY_KEY])
+ 
+    section("TONG HOP")
+    if len(issues):
+        log(issues.groupby("check").size().rename("so_dong_anh_huong").reset_index().to_markdown(index=False))
+        log()
+        log(f"- Tong so dong co it nhat 1 loi: {issues[PRIMARY_KEY].nunique()} / {len(df)} "
+            f"({issues[PRIMARY_KEY].nunique() / len(df) * 100:.2f}%)")
+    else:
+        log("Khong phat hien loi nao.")
+ 
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    REPORT_MD.write_text("\n".join(lines), encoding="utf-8")
+    issues.to_csv(ISSUES_CSV, index=False, encoding="utf-8-sig")
+    print(f"\n-> Da ghi {REPORT_MD}\n-> Da ghi {ISSUES_CSV}")
+ 
+ 
+if __name__ == "__main__":
+    main()

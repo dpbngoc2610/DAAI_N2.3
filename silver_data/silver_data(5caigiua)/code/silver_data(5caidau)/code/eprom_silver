@@ -1,0 +1,164 @@
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+
+BRONZE_PATH = Path("bronze/eprom.csv")
+REPORT_DIR = Path("silver/_reports")
+REPORT_MD = REPORT_DIR / "eprom_dq_report.md"
+ISSUES_CSV = REPORT_DIR / "eprom_dq_issues.csv"
+
+PRIMARY_KEY = "promo_id"
+PROMO_ID_PATTERN = r"^PROMO-\d{4}-\d{4}$"
+VALID_PROMO_TYPE = {"percentage", "fixed"}
+VALID_CHANNEL = {"all_channels", "email", "online", "social_media", "in_store"}
+
+lines: list[str] = []
+
+
+def log(text: str = "") -> None:
+    print(text)
+    lines.append(text)
+
+
+def section(title: str) -> None:
+    log()
+    log(f"## {title}")
+    log()
+
+
+def check_negative_out_of_range(df: pd.DataFrame) -> pd.DataFrame:
+    section("1. Kiem tra gia tri am / ngoai nguong (discount_value, min_order_value)")
+    is_pct = df["promo_type"].eq("percentage")
+    bad_pct = is_pct & (~df["discount_value"].between(0, 100))
+    bad_fixed = ~is_pct & (df["discount_value"] <= 0)
+    neg_min_order = df["min_order_value"] < 0
+
+    log(f"- `discount_value` voi promo_type=percentage nam ngoai [0, 100]: {int(bad_pct.sum())}")
+    log(f"- `discount_value` voi promo_type=fixed <= 0: {int(bad_fixed.sum())}")
+    log(f"- `min_order_value` am: {int(neg_min_order.sum())}")
+    bad = df[bad_pct | bad_fixed | neg_min_order]
+    if len(bad):
+        log()
+        log(bad[[PRIMARY_KEY, "promo_type", "discount_value", "min_order_value"]].to_markdown(index=False))
+    return pd.DataFrame({"check": "discount_out_of_range", "column": "discount_value",
+                          PRIMARY_KEY: bad[PRIMARY_KEY], "value": bad["discount_value"],
+                          "note": "Ngoai nguong hop le theo promo_type"})
+
+
+def check_promo_id(df: pd.DataFrame) -> pd.DataFrame:
+    section("2. Kiem tra cot promo_id (dinh dang & khoa chinh)")
+    null = df[PRIMARY_KEY].isna()
+    dup = df[PRIMARY_KEY].duplicated(keep=False)
+    bad_format = ~df[PRIMARY_KEY].astype(str).str.match(PROMO_ID_PATTERN)
+    log(f"- So dong NULL: {int(null.sum())}")
+    log(f"- So dong trung lap: {int(dup.sum())}")
+    log(f"- So dong sai dinh dang (khong khop PROMO-XXXX-XXXX): {int(bad_format.sum())}")
+    verdict = "DAT" if null.sum() == 0 and dup.sum() == 0 else "KHONG DAT"
+    log(f"> Ket luan: promo_id {verdict} dieu kien khoa chinh.")
+    bad = df[null | dup | bad_format]
+    return pd.DataFrame({"check": "promo_id_issue", "column": PRIMARY_KEY,
+                          PRIMARY_KEY: bad[PRIMARY_KEY], "value": bad[PRIMARY_KEY],
+                          "note": "NULL/trung/sai dinh dang"})
+
+
+def check_missing_fields(df: pd.DataFrame) -> pd.DataFrame:
+    section("3. Kiem tra thieu du lieu: promo_name / promo_channel / applicable_category")
+    rows = []
+    for col in ["promo_name", "promo_channel"]:
+        n = df[col].isna().sum()
+        log(f"- `{col}`: {n} dong NULL")
+        if n:
+            bad = df[df[col].isna()]
+            rows.append(pd.DataFrame({"check": f"missing_{col}", "column": col,
+                                       PRIMARY_KEY: bad[PRIMARY_KEY], "value": bad[col], "note": "NULL"}))
+    n_cat_null = df["applicable_category"].isna().sum()
+    log(f"- `applicable_category`: {n_cat_null} dong NULL "
+        f"({n_cat_null / len(df) * 100:.1f}% tong so dong)")
+    log("> Luu y: NULL o applicable_category KHONG phai loi - nghia la khuyen mai "
+        "ap dung cho TOAN BO nganh hang, nen giu nguyen hoac map ve 'ALL' o tang silver, "
+        "khong dua vao danh sach loi.")
+    invalid_channel = df[~df["promo_channel"].isin(VALID_CHANNEL) & df["promo_channel"].notna()]
+    if len(invalid_channel):
+        log(f"- `promo_channel` co gia tri ngoai domain: {len(invalid_channel)} dong")
+        rows.append(pd.DataFrame({"check": "invalid_channel", "column": "promo_channel",
+                                   PRIMARY_KEY: invalid_channel[PRIMARY_KEY],
+                                   "value": invalid_channel["promo_channel"], "note": "Ngoai domain"}))
+    return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+
+
+def check_dates(df: pd.DataFrame) -> pd.DataFrame:
+    section("4. Kiem tra logic thoi gian start_date / end_date")
+    start = pd.to_datetime(df["start_date"], errors="coerce")
+    end = pd.to_datetime(df["end_date"], errors="coerce")
+    invalid_parse = start.isna() | end.isna()
+    end_before_start = start.notna() & end.notna() & (end < start)
+    log(f"- So dong khong parse duoc ngay: {int(invalid_parse.sum())}")
+    log(f"- So dong end_date < start_date: {int(end_before_start.sum())}")
+    bad = df[invalid_parse | end_before_start]
+    if len(bad):
+        log()
+        log(bad[[PRIMARY_KEY, "promo_name", "start_date", "end_date"]].to_markdown(index=False))
+    return pd.DataFrame({"check": "invalid_date_logic", "column": "start_date/end_date",
+                          PRIMARY_KEY: bad[PRIMARY_KEY], "value": bad["start_date"] + " -> " + bad["end_date"],
+                          "note": "Khong parse duoc hoac end < start"})
+
+
+def check_distinct(df: pd.DataFrame) -> None:
+    section("5. Kiem tra cac gia tri rieng biet (distinct)")
+    prof = pd.DataFrame({
+        "cot": df.columns,
+        "so_distinct": [df[c].nunique(dropna=False) for c in df.columns],
+        "so_null": [int(df[c].isna().sum()) for c in df.columns],
+    })
+    log(prof.to_markdown(index=False))
+    log()
+    log(f"- `promo_type`: {df['promo_type'].unique().tolist()}")
+    log(f"- `promo_channel`: {df['promo_channel'].dropna().unique().tolist()}")
+    log(f"- `applicable_category`: {df['applicable_category'].dropna().unique().tolist()}")
+
+
+def check_missing_summary(df: pd.DataFrame) -> None:
+    section("6. Tong hop missing values toan bang")
+    log(df.isna().sum().rename("so_null").to_frame().to_markdown())
+
+
+def main(bronze_path: Path = BRONZE_PATH) -> None:
+    df = pd.read_csv(bronze_path, encoding="utf-8-sig")
+    df["discount_value"] = pd.to_numeric(df["discount_value"], errors="coerce")
+    df["min_order_value"] = pd.to_numeric(df["min_order_value"], errors="coerce")
+
+    log(f"# BAO CAO CHAT LUONG DU LIEU - {bronze_path.name}")
+    log()
+    log(f"- Kich thuoc: {df.shape[0]} dong x {df.shape[1]} cot")
+    log(f"- Ngay chay: {pd.Timestamp.today():%Y-%m-%d %H:%M}")
+
+    i1 = check_negative_out_of_range(df)
+    i2 = check_promo_id(df)
+    i3 = check_missing_fields(df)
+    i4 = check_dates(df)
+    check_distinct(df)
+    check_missing_summary(df)
+
+    non_empty = [x for x in [i1, i2, i3, i4] if len(x)]
+    issues = pd.concat(non_empty, ignore_index=True) if non_empty else pd.DataFrame(columns=["check", PRIMARY_KEY])
+
+    section("TONG HOP")
+    if len(issues):
+        log(issues.groupby("check").size().rename("so_dong_anh_huong").reset_index().to_markdown(index=False))
+        log()
+        log(f"- Tong so dong co it nhat 1 loi: {issues[PRIMARY_KEY].nunique()} / {len(df)} "
+            f"({issues[PRIMARY_KEY].nunique() / len(df) * 100:.2f}%)")
+    else:
+        log("Khong phat hien loi nao.")
+
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    REPORT_MD.write_text("\n".join(lines), encoding="utf-8")
+    issues.to_csv(ISSUES_CSV, index=False, encoding="utf-8-sig")
+    print(f"\n-> Da ghi {REPORT_MD}\n-> Da ghi {ISSUES_CSV}")
+
+
+if __name__ == "__main__":
+    main()
