@@ -1,0 +1,29 @@
+import pandas as pd
+import numpy as np
+import os
+
+RAW_DIR = "."
+OUT_DIR = "./silver_output"
+os.makedirs(OUT_DIR, exist_ok=True)
+
+log = [] 
+
+
+def note(msg):
+    print(msg)
+    log.append(msg)
+
+# 5. INVENTORY — vấn đề referential integrity với epd
+# ============================================================
+inventory = pd.read_csv(f"{RAW_DIR}/inventory.csv")
+inventory["snapshot_date"] = pd.to_datetime(inventory["snapshot_date"], errors="coerce")
+
+# 961 product_id trong inventory không có trong epd 
+# Đây nhiều khả năng là sản phẩm CŨ/đã ngừng bán. KHÔNG xóa các dòng này 
+orphan_mask = ~inventory["product_id"].isin(epd["product_id"])
+note(f"[inventory] product_id không khớp với epd (sản phẩm cũ/ngừng bán): {orphan_mask.sum()} dòng -> gắn cờ 'is_legacy_product'")
+inventory["is_legacy_product"] = orphan_mask
+
+inventory = inventory.drop_duplicates(subset=["snapshot_date", "product_id"])
+inventory.to_csv(f"{OUT_DIR}/inventory_silver.csv", index=False)
+note(f"[inventory] Hoàn tất: {len(inventory)} dòng")

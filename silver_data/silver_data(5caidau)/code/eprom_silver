@@ -1,0 +1,43 @@
+import pandas as pd
+import numpy as np
+import os
+
+RAW_DIR = "."
+OUT_DIR = "./silver_output"
+os.makedirs(OUT_DIR, exist_ok=True)
+
+log = [] 
+
+
+def note(msg):
+    print(msg)
+    log.append(msg)
+
+# 3. EPD (product master) 
+epd = pd.read_csv(f"{RAW_DIR}/epd.csv", encoding="utf-8-sig")  # utf-8-sig bỏ BOM ở đầu file
+
+# 3a. Giá âm -> không có ý nghĩa kinh doanh, coi là lỗi nhập liệu -> chuyển về NaN để impute
+neg_price_mask = epd["price"] < 0
+note(f"[epd] Giá âm: {neg_price_mask.sum()} dòng -> set về NaN để impute lại")
+epd.loc[neg_price_mask, "price"] = np.nan
+
+# 3b. category = "Unknown_999" là placeholder giả -> coi như thiếu (NaN)
+placeholder_mask = epd["category"] == "Unknown_999"
+note(f"[epd] category placeholder 'Unknown_999': {placeholder_mask.sum()} dòng -> set về NaN")
+epd.loc[placeholder_mask, "category"] = np.nan
+
+# 3c. Impute price thiếu bằng median của CÙNG category (hợp lý hơn median toàn bảng)
+epd["price"] = epd.groupby("category")["price"].transform(lambda s: s.fillna(s.median()))
+# nếu category cũng NaN thì impute bằng median toàn bảng (fallback)
+epd["price"] = epd["price"].fillna(epd["price"].median())
+
+# 3d. category còn thiếu -> gán "Unknown" 
+epd["category"] = epd["category"].fillna("Unknown")
+
+# 3e. cogs > price (bán dưới giá vốn) -> không xóa, chỉ FLAG để phân tích/gold layer biết
+epd["flag_loss_margin"] = epd["cogs"] > epd["price"]
+note(f"[epd] Sản phẩm có cogs > price (bán lỗ): {epd['flag_loss_margin'].sum()} dòng -> giữ lại, gắn cờ")
+
+epd = epd.drop_duplicates(subset="product_id")
+epd.to_csv(f"{OUT_DIR}/epd_silver.csv", index=False)
+note(f"[epd] Hoàn tất: {len(epd)} dòng")

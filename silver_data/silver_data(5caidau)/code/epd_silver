@@ -1,0 +1,21 @@
+import pandas as pd
+import numpy as np
+import os
+
+RAW_DIR = "."
+OUT_DIR = "./silver_output"
+os.makedirs(OUT_DIR, exist_ok=True)
+
+log = [] 
+
+def note(msg):
+    print(msg)
+    log.append(msg)
+    
+# 2. GEOGRAPHY 
+geography = pd.read_csv(f"{RAW_DIR}/geography.csv")
+for col in ["city", "region", "district"]:
+    geography[col] = geography[col].str.strip()
+geography = geography.drop_duplicates(subset="zip")
+note(f"[geography] {len(geography)} dòng, không có lỗi đáng kể.")
+geography.to_csv(f"{OUT_DIR}/geography_silver.csv", index=False)
