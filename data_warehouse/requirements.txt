@@ -1,0 +1,5 @@
+# Snowflake CLI includes and uses the production 4.x Python Connector.
+snowflake-cli>=3.24,<4.0
+snowflake-connector-python>=4.7,<5.0
+sqlparse>=0.5,<1.0
+pandas>=2.0,<3.0

@@ -1,0 +1,185 @@
+{
+  "generated_at_utc": "2026-09-24T14:17:26Z",
+  "source_batch_id": "SILVER_20260921_122904",
+  "prepared_dir": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\.silver_pipeline_work_01a0c3da\\prepared",
+  "row_counts": {
+    "customers": 121930,
+    "geography": 39948,
+    "products": 2412,
+    "promotions": 50,
+    "orders_enriched": 646945,
+    "order_items": 714669,
+    "payments": 646945,
+    "returns": 39939,
+    "reviews": 113551,
+    "shipments": 566067,
+    "inventory": 60247,
+    "web_traffic": 3652
+  },
+  "manifest_row_counts": {
+    "customers": 121930,
+    "geography": 39948,
+    "products": 2412,
+    "promotions": 50,
+    "orders_enriched": 646945,
+    "order_items": 714669,
+    "payments": 646945,
+    "returns": 39939,
+    "reviews": 113551,
+    "shipments": 566067,
+    "inventory": 60247,
+    "web_traffic": 3652
+  },
+  "duplicate_grain_counts": {
+    "customers": 0,
+    "geography": 0,
+    "products": 0,
+    "promotions": 0,
+    "orders_enriched": 0,
+    "order_items": 0,
+    "payments": 0,
+    "returns": 0,
+    "reviews": 0,
+    "shipments": 0,
+    "inventory": 0,
+    "web_traffic": 0
+  },
+  "missing_required_key_counts": {
+    "customers": 0,
+    "geography": 0,
+    "products": 0,
+    "promotions": 0,
+    "orders_enriched": 0,
+    "order_items": 0,
+    "payments": 0,
+    "returns": 0,
+    "reviews": 0,
+    "shipments": 0,
+    "inventory": 0,
+    "web_traffic": 0
+  },
+  "foreign_key_missing_counts": {
+    "order_items.order_id->orders_enriched.order_id": 0,
+    "order_items.product_id->products.product_id": 0,
+    "orders_enriched.customer_id->customers.customer_id": 0,
+    "orders_enriched.zip->geography.zip": 0,
+    "payments.order_id->orders_enriched.order_id": 0,
+    "returns.order_id->orders_enriched.order_id": 0,
+    "returns.product_id->products.product_id": 0,
+    "reviews.order_id->orders_enriched.order_id": 0,
+    "reviews.product_id->products.product_id": 0,
+    "reviews.customer_id->customers.customer_id": 0,
+    "shipments.order_id->orders_enriched.order_id": 0,
+    "inventory.product_id->products.product_id": 0
+  },
+  "stage_column_checks": {
+    "customers": {
+      "table": "STG_CUSTOMERS",
+      "expected_columns": 14,
+      "actual_columns": 14,
+      "status": "PASS",
+      "first_mismatch": null
+    },
+    "geography": {
+      "table": "STG_GEOGRAPHY",
+      "expected_columns": 11,
+      "actual_columns": 11,
+      "status": "PASS",
+      "first_mismatch": null
+    },
+    "products": {
+      "table": "STG_PRODUCTS",
+      "expected_columns": 15,
+      "actual_columns": 15,
+      "status": "PASS",
+      "first_mismatch": null
+    },
+    "promotions": {
+      "table": "STG_PROMOTIONS",
+      "expected_columns": 17,
+      "actual_columns": 17,
+      "status": "PASS",
+      "first_mismatch": null
+    },
+    "orders_enriched": {
+      "table": "STG_ORDERS_ENRICHED",
+      "expected_columns": 24,
+      "actual_columns": 24,
+      "status": "PASS",
+      "first_mismatch": null
+    },
+    "order_items": {
+      "table": "STG_ORDER_ITEMS",
+      "expected_columns": 14,
+      "actual_columns": 14,
+      "status": "PASS",
+      "first_mismatch": null
+    },
+    "payments": {
+      "table": "STG_PAYMENTS",
+      "expected_columns": 11,
+      "actual_columns": 11,
+      "status": "PASS",
+      "first_mismatch": null
+    },
+    "returns": {
+      "table": "STG_RETURNS",
+      "expected_columns": 14,
+      "actual_columns": 14,
+      "status": "PASS",
+      "first_mismatch": null
+    },
+    "reviews": {
+      "table": "STG_REVIEWS",
+      "expected_columns": 14,
+      "actual_columns": 14,
+      "status": "PASS",
+      "first_mismatch": null
+    },
+    "shipments": {
+      "table": "STG_SHIPMENTS",
+      "expected_columns": 29,
+      "actual_columns": 29,
+      "status": "PASS",
+      "first_mismatch": null
+    },
+    "inventory": {
+      "table": "STG_INVENTORY",
+      "expected_columns": 24,
+      "actual_columns": 24,
+      "status": "PASS",
+      "first_mismatch": null
+    },
+    "web_traffic": {
+      "table": "STG_WEB_TRAFFIC",
+      "expected_columns": 15,
+      "actual_columns": 15,
+      "status": "PASS",
+      "first_mismatch": null
+    }
+  },
+  "warning_counts": {
+    "customers": 0,
+    "geography": 0,
+    "products": 426,
+    "promotions": 0,
+    "orders_enriched": 0,
+    "order_items": 0,
+    "payments": 0,
+    "returns": 4423,
+    "reviews": 0,
+    "shipments": 519276,
+    "inventory": 782,
+    "web_traffic": 0
+  },
+  "measures": {
+    "gross_sales": 16430476585.53,
+    "discount_amount": 749607320.1,
+    "net_sales": 15680869265.43,
+    "payment_value": 15680869265.43,
+    "refund_amount": 510598506.55,
+    "shipping_fee": 2809309.66
+  },
+  "status": "PASS",
+  "failures": []
+}

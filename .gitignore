@@ -1,0 +1,11 @@
+data_warehouse/.venv/
+**/__pycache__/
+**/node_modules/
+*.pyc
+*.tmp
+*.sqlite
+.env
+
+# Generated Silver pipeline work directories
+silver_data/.silver_pipeline_work_*/
+silver_data/.tmp_silver_normalize/

@@ -1,0 +1,309 @@
+{
+  "all_ok": true,
+  "datasets": [
+    {
+      "name": "customers",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\customers_silver.xlsx",
+      "bytes": 9178145,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "zip_as_five_char_text": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "epd",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\epd_silver.xlsx",
+      "bytes": 106619,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "products",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\products_silver.xlsx",
+      "bytes": 239804,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "eprom",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\eprom_silver.xlsx",
+      "bytes": 99658,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "promotions",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\promotions_silver.xlsx",
+      "bytes": 12876,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "geography",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\geography_silver.xlsx",
+      "bytes": 2266520,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "zip_as_five_char_text": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "inventory",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\inventory_silver.xlsx",
+      "bytes": 6801809,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "orders_enriched",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\orders_enriched_silver.xlsx",
+      "bytes": 94550688,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "zip_as_five_char_text": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "order_items",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\order_items_silver.xlsx",
+      "bytes": 54181659,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "payments",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\payments_silver.xlsx",
+      "bytes": 41577981,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "returns",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\returns_silver.xlsx",
+      "bytes": 3306421,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "reviews",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\reviews_silver.xlsx",
+      "bytes": 9147112,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "shipments",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\shipments_silver.xlsx",
+      "bytes": 95010369,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "phone_as_ten_char_text": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "tf",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\tf_silver.xlsx",
+      "bytes": 107922,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    },
+    {
+      "name": "web_traffic",
+      "path": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\outputs\\01a0c3da-ace3-7ab3-ab61-6dfe7dca952f\\web_traffic_silver.xlsx",
+      "bytes": 335152,
+      "checks": {
+        "file_exists": true,
+        "zip_integrity": true,
+        "sheet_names": true,
+        "headers": true,
+        "quality_columns": true,
+        "row_count": true,
+        "column_count": true,
+        "representative_types": true,
+        "quality_counts": true,
+        "quarantine_count": true,
+        "warning_row_count": true,
+        "warning_status_consistency": true
+      },
+      "ok": true
+    }
+  ]
+}
