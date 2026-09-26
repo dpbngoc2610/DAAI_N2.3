@@ -10,38 +10,43 @@ Thư mục này chứa pipeline triển khai Data Warehouse trên Snowflake sau 
 | Database | `STUDENT_SALES_DW` | Database Data Warehouse |
 | Schema | `CONTROL` | Batch log, dataset log, data-quality results |
 | Schema | `STAGE` | Silver staging tables và named internal stage |
-| Schema | `CORE` | Star Schema dimension và fact |
+| Schema | `CORE` | 7 dimension, 8 fact và promotion bridge |
 | Schema | `ANALYTICS` | View phục vụ BI và phân tích |
 
 ## Thứ tự triển khai
 
-1. Kiểm tra toàn bộ Silver và tạo baseline.
-2. Kiểm tra DDL Star Schema.
-3. Tạo Snowflake warehouse, database và schemas.
-4. Tạo Star Schema trong `CORE` trước khi nạp dữ liệu.
-5. Tạo staging tables.
-6. Dùng `PUT` để tải CSV lên named internal stage.
-7. Dùng `COPY INTO` để nạp Silver vào `STAGE`.
-8. Chuyển đổi dữ liệu sang dimension và fact.
-9. Tạo analytical views.
-10. Chạy 31 data-quality checks.
-11. Đối soát số dòng và tài chính với baseline Silver.
-12. Xóa file khỏi internal stage sau khi nạp thành công.
+1. Kiểm tra lineage từ 15 file CSV gốc đến Silver canonical; dựng lại Silver để chứng minh kết quả tái lập.
+2. Kiểm tra 12 Silver canonical dùng cho warehouse và tạo baseline.
+3. Kiểm tra DDL Star Schema.
+4. Tạo Snowflake warehouse, database và schemas.
+5. Tạo Star Schema trong `CORE` trước khi nạp dữ liệu.
+6. Tạo 12 staging tables.
+7. Dùng `PUT` để tải CSV lên named internal stage.
+8. Dùng `COPY INTO` để nạp Silver vào `STAGE`.
+9. Chuyển đổi dữ liệu sang dimension, fact và promotion bridge.
+10. Tạo 7 analytical views.
+11. Chạy 35 data-quality checks.
+12. Đối soát số dòng và tài chính với baseline Silver.
+13. Xóa file khỏi internal stage sau khi nạp thành công.
 
 ## File chính
 
 - `build_warehouse.py`: triển khai Snowflake theo đúng thứ tự trên.
+- `build_windows_ca_bundle.py`: dùng kho chứng chỉ Windows cho kết nối TLS, không tắt SSL verification.
+- `validate_lineage.py`: kiểm tra file gốc → Silver, quyết định nguồn canonical và khả năng tái lập.
 - `validate_source.py`: kiểm tra Silver và tạo `expected_metrics.json`.
+- `validate_pipeline.py`: kiểm tra tĩnh toàn bộ SQL bundle và thứ tự triển khai.
 - `validate_warehouse.py`: kiểm thử database Snowflake live.
 - `run_snowflake_deploy.ps1`: chạy toàn bộ quy trình.
 - `connections.toml.example`: mẫu cấu hình connection, không chứa credential thật.
 - `requirements.txt`: Snowflake Python Connector và thư viện cần thiết.
+- `docs/Huong_dan_Data_Warehouse_Snowflake.docx`: tài liệu Word thô về quy trình, kết quả đối soát và cách triển khai.
 - `sql/00_bootstrap.sql`: warehouse, database, schemas, file format và stage.
 - `sql/01_control_schema.sql`: bảng kiểm soát ETL và DQ.
 - `sql/02_stage_schema.sql`: 12 staging tables.
 - `sql/03_transform.sql`: Silver → dimensions/facts.
-- `sql/04_analytics_views.sql`: 6 analytical views.
-- `sql/05_quality_checks.sql`: 31 kiểm tra dữ liệu.
+- `sql/04_analytics_views.sql`: 7 analytical views, gồm phân bổ hiệu quả promotion.
+- `sql/05_quality_checks.sql`: 35 kiểm tra grain, khóa, bridge, business rules và tài chính.
 
 ## Cài Snowflake CLI và Python Connector
 
@@ -72,17 +77,35 @@ Sao chép nội dung từ `connections.toml.example` vào file `connections.toml
 
 ```powershell
 python .\data_warehouse\validate_source.py
+python .\data_warehouse\validate_lineage.py --rebuild
 python .\star_schema\validate_model.py
 ```
 
 Kết quả ngoại tuyến nằm tại:
 
 - `output/offline_validation_report.md`
+- `output/lineage_validation_report.md`
+- `output/workbook_source_validation_report.md`
+- `output/pipeline_validation_report.md`
 - `output/expected_metrics.json`
 - `../star_schema/output/model_validation_report.md`
 
 Sau khi triển khai live, báo cáo Snowflake được ghi tại `output/snowflake_validation_report.md`.
 
+## Chiến lược nạp
+
+- CORE và STAGE dùng full refresh cho mỗi batch canonical.
+- Business dimensions dùng Type 1 vì Silver chỉ có một trạng thái hiện hành cho mỗi natural key.
+- `CONTROL.ETL_BATCH_LOG`, `ETL_DATASET_LOG` và `DQ_RESULTS` giữ lịch sử theo `BATCH_RUN_ID` qua nhiều lần chạy.
+- `BRIDGE_SALES_PROMOTION` tách `promo_id` và `promo_id_2`; allocation weight của mỗi sales line luôn tổng bằng 1.
+
 ## Canonical sources
 
-Gold sử dụng `products`, `promotions` và `web_traffic`. Các biến thể `epd`, `eprom` và `tf` chưa được hợp nhất để tránh đếm trùng.
+Gold sử dụng `products`, `promotions` và `web_traffic` theo dependency thực tế của dữ liệu dự án:
+
+- `products` bao phủ toàn bộ `product_id` trong `order_items`; `epd` là tập con 995 khóa nhưng có 6.013 xung đột thuộc tính, nên chỉ dùng đối chiếu.
+- `promotions` bao phủ toàn bộ 50 promotion được `order_items` tham chiếu; 994 khóa `eprom` không giao với namespace khóa này, nên không tự ý hợp nhất.
+- 990 grain `(date, traffic_source)` của `tf` đều đã có trong `web_traffic`; union sẽ đếm đôi, nên `tf` chỉ dùng kiểm tra biến thể.
+- Có 16 cặp `(order_id, product_id)` bị lặp trên 32 sales line; 4 return và 2 review nằm trên các cặp mơ hồ. Vì vậy return/review giữ khóa order + product và không bị gán sai vào một sales line cụ thể.
+
+Mặc định pipeline chỉ tự động chọn thư mục `.silver_pipeline_work_*/prepared`. Nguồn khác chỉ được dùng khi người vận hành truyền rõ `--prepared-dir`.

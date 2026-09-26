@@ -17,9 +17,11 @@ EXPECTED_FACTS = {
     "FACT_SALES", "FACT_ORDERS", "FACT_PAYMENTS", "FACT_RETURNS",
     "FACT_REVIEWS", "FACT_SHIPMENTS", "FACT_INVENTORY_SNAPSHOT", "FACT_WEB_TRAFFIC",
 }
+EXPECTED_BRIDGES = {"BRIDGE_SALES_PROMOTION"}
 EXPECTED_VIEWS = {
     "VW_SALES_DAILY", "VW_PRODUCT_PERFORMANCE", "VW_CUSTOMER_360",
     "VW_INVENTORY_LATEST", "VW_MARKETING_DAILY", "VW_DELIVERY_PERFORMANCE",
+    "VW_PROMOTION_PERFORMANCE",
 }
 
 
@@ -63,15 +65,15 @@ def validate(cursor, expected: dict) -> tuple[list[Check], list[tuple]]:
         "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='CORE' AND TABLE_TYPE='BASE TABLE'"
     )
     core_tables = {row[0] for row in cursor.fetchall()}
-    missing_tables = sorted((EXPECTED_DIMENSIONS | EXPECTED_FACTS) - core_tables)
-    checks.append(Check("Core dimension and fact tables", "model", "PASS" if not missing_tables else "FAIL",
-                        "7 dimensions and 8 facts exist" if not missing_tables else f"Missing: {missing_tables}"))
+    missing_tables = sorted((EXPECTED_DIMENSIONS | EXPECTED_FACTS | EXPECTED_BRIDGES) - core_tables)
+    checks.append(Check("Core Star Schema tables", "model", "PASS" if not missing_tables else "FAIL",
+                        "7 dimensions, 8 facts and 1 bridge exist" if not missing_tables else f"Missing: {missing_tables}"))
 
     cursor.execute("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_SCHEMA='ANALYTICS'")
     views = {row[0] for row in cursor.fetchall()}
     missing_views = sorted(EXPECTED_VIEWS - views)
     checks.append(Check("Analytical views", "model", "PASS" if not missing_views else "FAIL",
-                        "All 6 analytical views exist" if not missing_views else f"Missing: {missing_views}"))
+                        "All 7 analytical views exist" if not missing_views else f"Missing: {missing_views}"))
 
     broken_views = []
     for view in sorted(EXPECTED_VIEWS & views):
@@ -83,18 +85,22 @@ def validate(cursor, expected: dict) -> tuple[list[Check], list[tuple]]:
                         "All views execute" if not broken_views else "; ".join(broken_views)))
 
     cursor.execute(
-        "SELECT SOURCE_BATCH_ID, STATUS, SOURCE_MODE FROM CONTROL.ETL_BATCH_LOG ORDER BY BATCH_RUN_ID DESC LIMIT 1"
+        "SELECT BATCH_RUN_ID, SOURCE_BATCH_ID, STATUS, SOURCE_MODE FROM CONTROL.ETL_BATCH_LOG ORDER BY BATCH_RUN_ID DESC LIMIT 1"
     )
     batch = cursor.fetchone()
-    batch_ok = batch is not None and batch[1] == "SUCCESS" and batch[0] == expected["source_batch_id"]
+    batch_run_id = -1 if batch is None else int(batch[0])
+    batch_ok = batch is not None and batch[2] == "SUCCESS" and batch[1] == expected["source_batch_id"]
     checks.append(Check("Latest ETL batch", "pipeline", "PASS" if batch_ok else "FAIL",
-                        "No batch" if batch is None else f"batch={batch[0]}, status={batch[1]}, mode={batch[2]}"))
+                        "No batch" if batch is None else f"run={batch[0]}, source_batch={batch[1]}, status={batch[2]}, mode={batch[3]}"))
 
     cursor.execute(
         """
         SELECT DATASET_NAME, SOURCE_ROW_COUNT, TARGET_TABLE, TARGET_ROW_COUNT, STATUS
-        FROM CONTROL.ETL_DATASET_LOG ORDER BY DATASET_NAME
+        FROM CONTROL.ETL_DATASET_LOG
+        WHERE BATCH_RUN_ID = %s
+        ORDER BY DATASET_NAME
         """
+        , (batch_run_id,)
     )
     synchronization = cursor.fetchall()
     logged = {row[0]: row for row in synchronization}
@@ -107,11 +113,11 @@ def validate(cursor, expected: dict) -> tuple[list[Check], list[tuple]]:
                         "PASS" if not bad_sync else "FAIL",
                         "12/12 canonical datasets match" if not bad_sync else f"Mismatches: {bad_sync}"))
 
-    dq_total = int(scalar(cursor, "SELECT COUNT(*) FROM CONTROL.DQ_RESULTS"))
-    dq_failed = int(scalar(cursor, "SELECT COUNT(*) FROM CONTROL.DQ_RESULTS WHERE STATUS='FAIL'"))
-    dq_ok = dq_total == 31 and dq_failed == 0
+    dq_total = int(scalar(cursor, f"SELECT COUNT(*) FROM CONTROL.DQ_RESULTS WHERE BATCH_RUN_ID={batch_run_id}"))
+    dq_failed = int(scalar(cursor, f"SELECT COUNT(*) FROM CONTROL.DQ_RESULTS WHERE BATCH_RUN_ID={batch_run_id} AND STATUS='FAIL'"))
+    dq_ok = dq_total == 35 and dq_failed == 0
     checks.append(Check("Snowflake data-quality gate", "quality", "PASS" if dq_ok else "FAIL",
-                        f"checks={dq_total}/31; failed={dq_failed}"))
+                        f"checks={dq_total}/35; failed={dq_failed}"))
 
     expected_measures = expected["measures"]
     measure_queries = {
@@ -130,9 +136,12 @@ def validate(cursor, expected: dict) -> tuple[list[Check], list[tuple]]:
     sales = scalar(cursor, "SELECT ROUND(SUM(NET_SALES_AMOUNT),2) FROM CORE.FACT_SALES")
     orders = scalar(cursor, "SELECT ROUND(SUM(NET_SALES_AMOUNT),2) FROM CORE.FACT_ORDERS")
     product_view = scalar(cursor, "SELECT ROUND(SUM(NET_SALES),2) FROM ANALYTICS.VW_PRODUCT_PERFORMANCE")
+    promotion_view = scalar(cursor, "SELECT ROUND(SUM(ATTRIBUTED_NET_SALES),2) FROM ANALYTICS.VW_PROMOTION_PERFORMANCE")
     checks.append(Check("Net sales across Snowflake layers", "cross_layer_consistency",
-                        "PASS" if close_enough(sales, orders) and close_enough(sales, product_view) else "FAIL",
-                        f"sales={float(sales):,.2f}; orders={float(orders):,.2f}; view={float(product_view):,.2f}"))
+                        "PASS" if close_enough(sales, orders) and close_enough(sales, product_view)
+                        and close_enough(sales, promotion_view) else "FAIL",
+                        f"sales={float(sales):,.2f}; orders={float(orders):,.2f}; "
+                        f"product_view={float(product_view):,.2f}; promotion_view={float(promotion_view):,.2f}"))
 
     grain_queries = {
         "FACT_SALES": "SELECT COUNT(*) FROM (SELECT ORDER_ID,SOURCE_ROW_NUMBER FROM CORE.FACT_SALES GROUP BY 1,2 HAVING COUNT(*)>1)",
@@ -148,6 +157,29 @@ def validate(cursor, expected: dict) -> tuple[list[Check], list[tuple]]:
     failed_grains = {table: count for table, count in duplicate_grains.items() if count}
     checks.append(Check("Fact grain uniqueness", "model", "PASS" if not failed_grains else "FAIL",
                         "All 8 fact grains are unique" if not failed_grains else str(failed_grains)))
+
+    bridge_duplicates = int(scalar(
+        cursor,
+        "SELECT COUNT(*) FROM (SELECT SALES_KEY,PROMOTION_SEQUENCE FROM CORE.BRIDGE_SALES_PROMOTION "
+        "GROUP BY 1,2 HAVING COUNT(*)>1)",
+    ))
+    bridge_bad_weights = int(scalar(
+        cursor,
+        "SELECT COUNT(*) FROM (SELECT SALES_KEY FROM CORE.BRIDGE_SALES_PROMOTION "
+        "GROUP BY 1 HAVING ABS(SUM(ALLOCATION_WEIGHT)-1)>0.000001)",
+    ))
+    checks.append(Check(
+        "Promotion bridge integrity", "model",
+        "PASS" if bridge_duplicates == 0 and bridge_bad_weights == 0 else "FAIL",
+        f"duplicate_sequences={bridge_duplicates}; invalid_weight_sums={bridge_bad_weights}",
+    ))
+    bridge_rows = int(scalar(cursor, "SELECT COUNT(*) FROM CORE.BRIDGE_SALES_PROMOTION"))
+    expected_bridge_rows = int(expected["promotion_bridge"]["expected_bridge_rows"])
+    checks.append(Check(
+        "Promotion bridge completeness", "completeness",
+        "PASS" if bridge_rows == expected_bridge_rows else "FAIL",
+        f"expected={expected_bridge_rows:,}; Snowflake={bridge_rows:,}",
+    ))
     return checks, synchronization
 
 

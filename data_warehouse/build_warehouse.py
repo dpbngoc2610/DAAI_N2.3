@@ -129,8 +129,7 @@ def upload_and_copy(cursor, prepared_dir: Path, manifest_rows: dict[str, int]) -
     return loaded_counts
 
 
-def populate_dataset_log(cursor, loaded_counts: dict[str, int]) -> None:
-    cursor.execute("TRUNCATE TABLE CONTROL.ETL_DATASET_LOG")
+def populate_dataset_log(cursor, loaded_counts: dict[str, int], batch_run_id: int) -> None:
     for dataset, source_count in loaded_counts.items():
         target_table, count_sql = SOURCE_TARGETS[dataset]
         target_count = int(scalar(cursor, count_sql))
@@ -140,9 +139,9 @@ def populate_dataset_log(cursor, loaded_counts: dict[str, int]) -> None:
             INSERT INTO CONTROL.ETL_DATASET_LOG (
                 BATCH_RUN_ID, DATASET_NAME, SOURCE_ROW_COUNT, TARGET_TABLE,
                 TARGET_ROW_COUNT, STATUS
-            ) SELECT 1, %s, %s, %s, %s, %s
+            ) SELECT %s, %s, %s, %s, %s, %s
             """,
-            (dataset, source_count, target_table, target_count, status),
+            (batch_run_id, dataset, source_count, target_table, target_count, status),
         )
 
 
@@ -162,6 +161,7 @@ def main() -> int:
     cursor = connection.cursor()
     started_at = utc_now()
     loaded_counts: dict[str, int] = {}
+    batch_run_id: int | None = None
     try:
         if not args.skip_bootstrap:
             print("Creating Snowflake warehouse, database and schemas...")
@@ -171,14 +171,16 @@ def main() -> int:
 
         print("Creating control tables...")
         execute_sql_file(cursor, sql_root / "01_control_schema.sql")
+        batch_run_id = int(scalar(cursor, "SELECT COALESCE(MAX(BATCH_RUN_ID), 0) + 1 FROM CONTROL.ETL_BATCH_LOG"))
+        cursor.execute(f"SET BATCH_RUN_ID = {batch_run_id}")
         cursor.execute(
             """
             INSERT INTO CONTROL.ETL_BATCH_LOG (
                 BATCH_RUN_ID, SOURCE_BATCH_ID, SOURCE_MODE, STARTED_AT_UTC,
                 STATUS, SOURCE_PATH
-            ) SELECT 1, %s, 'PREPARED_CSV', %s, 'RUNNING', %s
+            ) SELECT %s, %s, 'PREPARED_CSV', %s, 'RUNNING', %s
             """,
-            (source_batch_id, started_at, str(prepared_dir)),
+            (batch_run_id, source_batch_id, started_at, str(prepared_dir)),
         )
 
         print("Creating Star Schema before loading the Data Warehouse...")
@@ -190,23 +192,29 @@ def main() -> int:
 
         print("Transforming Silver staging data into dimensions and facts...")
         execute_sql_file(cursor, sql_root / "03_transform.sql")
-        populate_dataset_log(cursor, loaded_counts)
+        populate_dataset_log(cursor, loaded_counts, batch_run_id)
 
         print("Creating analytical views...")
         execute_sql_file(cursor, sql_root / "04_analytics_views.sql")
         print("Running the Snowflake quality gate...")
         execute_sql_file(cursor, sql_root / "05_quality_checks.sql")
 
-        failed_checks = int(scalar(cursor, "SELECT COUNT(*) FROM CONTROL.DQ_RESULTS WHERE STATUS = 'FAIL'"))
-        failed_sync = int(scalar(cursor, "SELECT COUNT(*) FROM CONTROL.ETL_DATASET_LOG WHERE STATUS = 'FAIL'"))
+        failed_checks = int(scalar(
+            cursor,
+            f"SELECT COUNT(*) FROM CONTROL.DQ_RESULTS WHERE BATCH_RUN_ID={batch_run_id} AND STATUS='FAIL'",
+        ))
+        failed_sync = int(scalar(
+            cursor,
+            f"SELECT COUNT(*) FROM CONTROL.ETL_DATASET_LOG WHERE BATCH_RUN_ID={batch_run_id} AND STATUS='FAIL'",
+        ))
         status = "SUCCESS" if failed_checks == 0 and failed_sync == 0 else "FAILED_DQ"
         cursor.execute(
             """
             UPDATE CONTROL.ETL_BATCH_LOG
             SET COMPLETED_AT_UTC=%s, STATUS=%s, MESSAGE=%s
-            WHERE BATCH_RUN_ID=1
+            WHERE BATCH_RUN_ID=%s
             """,
-            (utc_now(), status, f"failed_checks={failed_checks}; failed_sync={failed_sync}"),
+            (utc_now(), status, f"failed_checks={failed_checks}; failed_sync={failed_sync}", batch_run_id),
         )
         if status != "SUCCESS":
             raise RuntimeError(f"Snowflake quality gate failed: checks={failed_checks}, sync={failed_sync}")
@@ -218,13 +226,15 @@ def main() -> int:
         return 0
     except Exception as exc:
         try:
+            if batch_run_id is None:
+                raise RuntimeError("Batch log was not initialized")
             cursor.execute(
                 """
                 UPDATE CONTROL.ETL_BATCH_LOG
                 SET COMPLETED_AT_UTC=%s, STATUS='FAILED', MESSAGE=%s
-                WHERE BATCH_RUN_ID=1
+                WHERE BATCH_RUN_ID=%s
                 """,
-                (utc_now(), str(exc)[:3900]),
+                (utc_now(), str(exc)[:3900], batch_run_id),
             )
         except Exception:
             pass

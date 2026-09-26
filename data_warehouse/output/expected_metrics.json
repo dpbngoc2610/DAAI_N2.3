@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-09-24T14:17:26Z",
+  "generated_at_utc": "2026-09-26T02:00:48Z",
   "source_batch_id": "SILVER_20260921_122904",
   "prepared_dir": "C:\\dpbngoc\\DA & AI\\DAAI_N2.3\\silver_data\\.silver_pipeline_work_01a0c3da\\prepared",
   "row_counts": {
@@ -61,6 +61,8 @@
   "foreign_key_missing_counts": {
     "order_items.order_id->orders_enriched.order_id": 0,
     "order_items.product_id->products.product_id": 0,
+    "order_items.promo_id->promotions.promo_id": 0,
+    "order_items.promo_id_2->promotions.promo_id": 0,
     "orders_enriched.customer_id->customers.customer_id": 0,
     "orders_enriched.zip->geography.zip": 0,
     "payments.order_id->orders_enriched.order_id": 0,
@@ -71,6 +73,10 @@
     "reviews.customer_id->customers.customer_id": 0,
     "shipments.order_id->orders_enriched.order_id": 0,
     "inventory.product_id->products.product_id": 0
+  },
+  "cross_source_mismatch_counts": {
+    "payments.payment_method=orders_enriched.payment_method": 0,
+    "reviews.customer_id=orders_enriched.customer_id": 0
   },
   "stage_column_checks": {
     "customers": {
@@ -171,6 +177,25 @@
     "shipments": 519276,
     "inventory": 782,
     "web_traffic": 0
+  },
+  "business_rule_violation_counts": {
+    "customers": 0,
+    "geography": 0,
+    "products": 0,
+    "promotions": 0,
+    "orders_enriched": 0,
+    "order_items": 0,
+    "payments": 0,
+    "returns": 0,
+    "reviews": 0,
+    "shipments": 0,
+    "inventory": 0,
+    "web_traffic": 0
+  },
+  "promotion_bridge": {
+    "source_promotion_links": 276522,
+    "secondary_promotion_rows": 206,
+    "expected_bridge_rows": 714875
   },
   "measures": {
     "gross_sales": 16430476585.53,

@@ -62,14 +62,13 @@ def utc_now() -> str:
 def find_latest_prepared_dir(project_root: Path) -> Path:
     candidates = []
     silver_root = project_root / "silver_data"
-    for pattern in (".silver_pipeline_work_*/prepared", ".tmp_silver_normalize/prepared"):
-        for path in silver_root.glob(pattern):
-            if (path / "manifest.json").exists() and all(
-                (path / f"{name}_silver.csv").exists() for name in CANONICAL_DATASETS
-            ):
-                candidates.append(path)
+    for path in silver_root.glob(".silver_pipeline_work_*/prepared"):
+        if (path / "manifest.json").exists() and all(
+            (path / f"{name}_silver.csv").exists() for name in CANONICAL_DATASETS
+        ):
+            candidates.append(path)
     if not candidates:
-        raise FileNotFoundError("No complete prepared Silver directory was found")
+        raise FileNotFoundError("No complete canonical .silver_pipeline_work_*/prepared directory was found")
     return max(candidates, key=lambda path: (path / "manifest.json").stat().st_mtime)
 
 
@@ -83,6 +82,7 @@ def scan_dataset(path: Path, dataset: str, chunk_size: int) -> dict:
     missing_required = 0
     row_count = 0
     warning_count = 0
+    business_rule_violations = 0
     metric_sums = {
         "gross_sales": 0.0,
         "discount_amount": 0.0,
@@ -90,6 +90,8 @@ def scan_dataset(path: Path, dataset: str, chunk_size: int) -> dict:
         "payment_value": 0.0,
         "refund_amount": 0.0,
         "shipping_fee": 0.0,
+        "promotion_links": 0.0,
+        "secondary_promotion_count": 0.0,
     }
 
     for frame in pd.read_csv(path, dtype=str, keep_default_na=False, chunksize=chunk_size, low_memory=False):
@@ -113,18 +115,55 @@ def scan_dataset(path: Path, dataset: str, chunk_size: int) -> dict:
             metric_sums["gross_sales"] += float(gross.sum())
             metric_sums["discount_amount"] += float(discount.sum())
             metric_sums["net_sales"] += float((gross - discount).sum())
+            metric_sums["promotion_links"] += float(frame["promo_id"].str.strip().ne("").sum())
+            metric_sums["promotion_links"] += float(frame["promo_id_2"].str.strip().ne("").sum())
+            metric_sums["secondary_promotion_count"] += float(frame["promo_id_2"].str.strip().ne("").sum())
+            business_rule_violations += int(
+                ((quantity <= 0) | (unit_price < 0) | (discount < 0) | (discount > gross)).sum()
+            )
         elif dataset == "payments":
-            metric_sums["payment_value"] += float(pd.to_numeric(frame["payment_value"], errors="coerce").fillna(0).sum())
+            payment_value = pd.to_numeric(frame["payment_value"], errors="coerce")
+            installments = pd.to_numeric(frame["installments"], errors="coerce")
+            metric_sums["payment_value"] += float(payment_value.fillna(0).sum())
+            business_rule_violations += int(((payment_value < 0) | (installments <= 0)).sum())
         elif dataset == "returns":
-            metric_sums["refund_amount"] += float(pd.to_numeric(frame["refund_amount"], errors="coerce").fillna(0).sum())
+            refund_amount = pd.to_numeric(frame["refund_amount"], errors="coerce")
+            return_quantity = pd.to_numeric(frame["return_quantity"], errors="coerce")
+            metric_sums["refund_amount"] += float(refund_amount.fillna(0).sum())
+            business_rule_violations += int(((refund_amount < 0) | (return_quantity <= 0)).sum())
+        elif dataset == "reviews":
+            rating = pd.to_numeric(frame["rating"], errors="coerce")
+            business_rule_violations += int(((rating < 1) | (rating > 5)).sum())
         elif dataset == "shipments":
-            metric_sums["shipping_fee"] += float(pd.to_numeric(frame["shipping_fee"], errors="coerce").fillna(0).sum())
+            shipping_fee = pd.to_numeric(frame["shipping_fee"], errors="coerce")
+            ship_date = pd.to_datetime(frame["ship_date"], errors="coerce")
+            delivery_date = pd.to_datetime(frame["delivery_date"], errors="coerce")
+            metric_sums["shipping_fee"] += float(shipping_fee.fillna(0).sum())
+            business_rule_violations += int(((shipping_fee < 0) | (delivery_date < ship_date)).sum())
+        elif dataset == "promotions":
+            start_date = pd.to_datetime(frame["start_date"], errors="coerce")
+            end_date = pd.to_datetime(frame["end_date"], errors="coerce")
+            discount_value = pd.to_numeric(frame["discount_value"], errors="coerce")
+            minimum = pd.to_numeric(frame["min_order_value"], errors="coerce")
+            business_rule_violations += int(
+                ((end_date < start_date) | (discount_value < 0) | (minimum < 0)).sum()
+            )
+        elif dataset == "web_traffic":
+            sessions = pd.to_numeric(frame["sessions"], errors="coerce")
+            visitors = pd.to_numeric(frame["unique_visitors"], errors="coerce")
+            page_views = pd.to_numeric(frame["page_views"], errors="coerce")
+            bounce_rate = pd.to_numeric(frame["bounce_rate"], errors="coerce")
+            business_rule_violations += int(
+                ((sessions < 0) | (visitors < 0) | (page_views < 0)
+                 | (bounce_rate < 0) | (bounce_rate > 1)).sum()
+            )
 
     return {
         "row_count": row_count,
         "duplicate_grain_count": duplicate_count,
         "missing_required_key_count": missing_required,
         "warning_count": warning_count,
+        "business_rule_violation_count": business_rule_violations,
         "key_values": seen,
         "metric_sums": metric_sums,
     }
@@ -132,36 +171,66 @@ def scan_dataset(path: Path, dataset: str, chunk_size: int) -> dict:
 
 def foreign_key_checks(prepared_dir: Path, key_sets: dict[str, set[str]], chunk_size: int) -> dict[str, int]:
     relationships = [
-        ("order_items", "order_id", "orders_enriched"),
-        ("order_items", "product_id", "products"),
-        ("orders_enriched", "customer_id", "customers"),
-        ("orders_enriched", "zip", "geography"),
-        ("payments", "order_id", "orders_enriched"),
-        ("returns", "order_id", "orders_enriched"),
-        ("returns", "product_id", "products"),
-        ("reviews", "order_id", "orders_enriched"),
-        ("reviews", "product_id", "products"),
-        ("reviews", "customer_id", "customers"),
-        ("shipments", "order_id", "orders_enriched"),
-        ("inventory", "product_id", "products"),
+        ("order_items", "order_id", "orders_enriched", False),
+        ("order_items", "product_id", "products", False),
+        ("order_items", "promo_id", "promotions", True),
+        ("order_items", "promo_id_2", "promotions", True),
+        ("orders_enriched", "customer_id", "customers", False),
+        ("orders_enriched", "zip", "geography", False),
+        ("payments", "order_id", "orders_enriched", False),
+        ("returns", "order_id", "orders_enriched", False),
+        ("returns", "product_id", "products", False),
+        ("reviews", "order_id", "orders_enriched", False),
+        ("reviews", "product_id", "products", False),
+        ("reviews", "customer_id", "customers", False),
+        ("shipments", "order_id", "orders_enriched", False),
+        ("inventory", "product_id", "products", False),
     ]
     results: dict[str, int] = {}
     natural_keys = {
         "orders_enriched": "order_id", "products": "product_id",
-        "customers": "customer_id", "geography": "zip",
+        "customers": "customer_id", "geography": "zip", "promotions": "promo_id",
     }
     parent_values = {
         parent: {value.split("\x1f", 1)[0] for value in key_sets[parent]}
         for parent in natural_keys
     }
-    for child, column, parent in relationships:
+    for child, column, parent, optional in relationships:
         missing = 0
         path = prepared_dir / f"{child}_silver.csv"
         for frame in pd.read_csv(path, dtype=str, keep_default_na=False, usecols=[column], chunksize=chunk_size):
             values = frame[column].fillna("").astype(str).str.strip()
-            missing += int((~values.isin(parent_values[parent])).sum())
+            invalid = ~values.isin(parent_values[parent])
+            if optional:
+                invalid &= values.ne("")
+            missing += int(invalid.sum())
         results[f"{child}.{column}->{parent}.{natural_keys[parent]}"] = missing
     return results
+
+
+def cross_source_consistency_checks(prepared_dir: Path) -> dict[str, int]:
+    orders = pd.read_csv(
+        prepared_dir / "orders_enriched_silver.csv", dtype=str, keep_default_na=False,
+        usecols=["order_id", "customer_id", "payment_method"],
+    ).set_index("order_id")
+    payments = pd.read_csv(
+        prepared_dir / "payments_silver.csv", dtype=str, keep_default_na=False,
+        usecols=["order_id", "payment_method"],
+    ).set_index("order_id")
+    reviews = pd.read_csv(
+        prepared_dir / "reviews_silver.csv", dtype=str, keep_default_na=False,
+        usecols=["order_id", "customer_id"],
+    )
+    payment_methods = payments.join(orders[["payment_method"]], lsuffix="_payment", rsuffix="_order")
+    review_customers = reviews.join(orders[["customer_id"]], on="order_id", rsuffix="_order")
+    return {
+        "payments.payment_method=orders_enriched.payment_method": int(
+            payment_methods["payment_method_payment"].ne(payment_methods["payment_method_order"]).sum()
+        ),
+        "reviews.customer_id=orders_enriched.customer_id": int(
+            review_customers["customer_id"].ne(review_customers["customer_id_order"]).sum()
+        ),
+    }
 
 
 def split_top_level_columns(body: str) -> list[str]:
@@ -228,6 +297,7 @@ def main() -> int:
 
     key_sets = {name: result.pop("key_values") for name, result in scans.items()}
     fk_results = foreign_key_checks(prepared_dir, key_sets, args.chunk_size)
+    cross_source_results = cross_source_consistency_checks(prepared_dir)
     stage_schema_path = args.project_root.resolve() / "data_warehouse" / "sql" / "02_stage_schema.sql"
     stage_column_checks = validate_stage_column_order(stage_schema_path, manifest)
 
@@ -240,6 +310,12 @@ def main() -> int:
         "refund_amount": round(scans["returns"]["metric_sums"]["refund_amount"], 2),
         "shipping_fee": round(scans["shipments"]["metric_sums"]["shipping_fee"], 2),
     }
+    promotion_bridge = {
+        "source_promotion_links": int(scans["order_items"]["metric_sums"]["promotion_links"]),
+        "secondary_promotion_rows": int(scans["order_items"]["metric_sums"]["secondary_promotion_count"]),
+        "expected_bridge_rows": row_counts["order_items"]
+        + int(scans["order_items"]["metric_sums"]["secondary_promotion_count"]),
+    }
     results = {
         "generated_at_utc": utc_now(),
         "source_batch_id": manifest.get("batch_id"),
@@ -249,8 +325,13 @@ def main() -> int:
         "duplicate_grain_counts": {name: result["duplicate_grain_count"] for name, result in scans.items()},
         "missing_required_key_counts": {name: result["missing_required_key_count"] for name, result in scans.items()},
         "foreign_key_missing_counts": fk_results,
+        "cross_source_mismatch_counts": cross_source_results,
         "stage_column_checks": stage_column_checks,
         "warning_counts": {name: result["warning_count"] for name, result in scans.items()},
+        "business_rule_violation_counts": {
+            name: result["business_rule_violation_count"] for name, result in scans.items()
+        },
+        "promotion_bridge": promotion_bridge,
         "measures": measures,
     }
 
@@ -262,7 +343,10 @@ def main() -> int:
             failures.append(f"{dataset}: duplicated grain")
         if results["missing_required_key_counts"][dataset] != 0:
             failures.append(f"{dataset}: missing required key")
+        if results["business_rule_violation_counts"][dataset] != 0:
+            failures.append(f"{dataset}: business-rule violation")
     failures.extend(name for name, count in fk_results.items() if count != 0)
+    failures.extend(name for name, count in cross_source_results.items() if count != 0)
     failures.extend(
         f"{dataset}: staging column order does not match Silver CSV"
         for dataset, result in stage_column_checks.items() if result["status"] != "PASS"
@@ -279,22 +363,28 @@ def main() -> int:
         f"- Kết luận: `{results['status']}`",
         f"- Số lỗi: `{len(failures)}`", "",
         "## Số dòng và grain", "",
-        "| Dataset | Manifest | Thực tế | Grain trùng | Thiếu key | Warning | Status |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
+        "| Dataset | Manifest | Thực tế | Grain trùng | Thiếu key | Rule lỗi | Warning | Status |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for dataset in CANONICAL_DATASETS:
         ok = (row_counts[dataset] == manifest_rows[dataset]
               and results["duplicate_grain_counts"][dataset] == 0
-              and results["missing_required_key_counts"][dataset] == 0)
+              and results["missing_required_key_counts"][dataset] == 0
+              and results["business_rule_violation_counts"][dataset] == 0)
         lines.append(
             f"| `{dataset}` | {manifest_rows[dataset]:,} | {row_counts[dataset]:,} | "
             f"{results['duplicate_grain_counts'][dataset]:,} | "
             f"{results['missing_required_key_counts'][dataset]:,} | "
+            f"{results['business_rule_violation_counts'][dataset]:,} | "
             f"{results['warning_counts'][dataset]:,} | {'PASS' if ok else 'FAIL'} |"
         )
     lines.extend(["", "## Referential integrity giữa các nguồn Silver", "",
                   "| Quan hệ | Bản ghi không khớp | Status |", "| --- | ---: | --- |"]) 
     for name, count in fk_results.items():
+        lines.append(f"| `{name}` | {count:,} | {'PASS' if count == 0 else 'FAIL'} |")
+    lines.extend(["", "## Đồng bộ thuộc tính giữa các nguồn", "",
+                  "| Quy tắc | Bản ghi không khớp | Status |", "| --- | ---: | --- |"])
+    for name, count in cross_source_results.items():
         lines.append(f"| `{name}` | {count:,} | {'PASS' if count == 0 else 'FAIL'} |")
     lines.extend(["", "## Đồng bộ thứ tự cột CSV → Snowflake staging", "",
                   "| Dataset | Stage table | Silver columns | Stage columns | Status |",
@@ -307,6 +397,12 @@ def main() -> int:
     lines.extend(["", "## Baseline tài chính dùng để đối soát Snowflake", ""])
     for name, value in measures.items():
         lines.append(f"- `{name}`: `{value:,.2f}`")
+    lines.extend([
+        "", "## Baseline bridge khuyến mãi", "",
+        f"- Liên kết promotion từ Silver: `{promotion_bridge['source_promotion_links']:,}`",
+        f"- Sales line có promotion thứ hai: `{promotion_bridge['secondary_promotion_rows']:,}`",
+        f"- Số dòng bridge kỳ vọng, gồm NO_PROMO: `{promotion_bridge['expected_bridge_rows']:,}`",
+    ])
     if failures:
         lines.extend(["", "## Lỗi", ""] + [f"- {failure}" for failure in failures])
     lines.append("")

@@ -1,18 +1,21 @@
-# Mô hình Star Schema trên Snowflake — Student Sales
+# Mô hình Star Schema Snowflake cho Student Sales
 
-Mô hình được triển khai trong `STUDENT_SALES_DW.CORE`. Đây là một Star Schema mở rộng theo dạng fact constellation: `FACT_SALES` là fact trung tâm cho bán hàng, bên cạnh các fact riêng cho đơn hàng, thanh toán, trả hàng, đánh giá, vận chuyển, tồn kho và traffic.
+Mô hình được triển khai trong `STUDENT_SALES_DW.CORE`. Đây là fact constellation: tám fact dùng chung bảy conformed dimensions, trong đó `FACT_SALES` là fact trung tâm ở mức dòng đơn hàng. `BRIDGE_SALES_PROMOTION` xử lý quan hệ nhiều-nhiều giữa dòng bán hàng và khuyến mãi.
 
-## Phạm vi MVP
+## Cơ sở thiết kế
 
-Gold layer sử dụng các nguồn Silver chuẩn chính: `customers`, `geography`, `products`, `promotions`, `orders_enriched`, `order_items`, `payments`, `returns`, `reviews`, `shipments`, `inventory` và `web_traffic`.
-
-Các bảng `epd`, `eprom` và `tf` là biến thể của `products`, `promotions` và `web_traffic`. Chúng không được nạp vào Gold layer để tránh nhân đôi số liệu. Có thể bổ sung chúng như nguồn thay thế sau khi xác định rõ quy tắc hợp nhất.
+- ERD nguồn mô tả các chủ thể địa lý, khách hàng, đơn hàng, thanh toán, nhân viên, sản phẩm, khuyến mãi, trả hàng, đánh giá, tồn kho, vận chuyển, shipper và web traffic.
+- Silver canonical có đúng một bản ghi hiện hành cho mỗi khóa tự nhiên của customer, product, promotion, geography, sales employee và shipper. Không có lịch sử hiệu lực đáng tin cậy, nên sáu business dimensions dùng Type 1 trong quy trình full refresh.
+- Các dimension không tham chiếu dimension khác. Ngày đăng ký, ngày hiệu lực khuyến mãi và ngày gia nhập shipper được giữ như thuộc tính của dimension; chỉ các fact dùng role-playing keys tới `DIM_DATE`.
+- `order_items` có 32 dòng thuộc các cặp `(order_id, product_id)` bị lặp. Vì nguồn không có `order_item_id`, return và review không được gán tùy tiện vào một `SALES_KEY`; chúng giữ `order_id` dạng degenerate key và kết nối tới customer/product/date dimensions.
+- Có 276.522 liên kết khuyến mãi trong nguồn, trong đó 206 dòng có khuyến mãi thứ hai. Bridge tạo một dòng `NO_PROMO` cho mỗi sales line không có khuyến mãi và dùng `ALLOCATION_WEIGHT` để tổng doanh thu theo promotion không bị nhân đôi.
 
 ## Grain
 
-| Bảng fact | Grain |
+| Bảng | Grain |
 | --- | --- |
-| `fact_sales` | Một dòng nguồn trong `order_items` |
+| `fact_sales` | Một dòng nguồn trong `order_items`, định danh bởi `order_id + source_row_number` |
+| `bridge_sales_promotion` | Một promotion sequence trên một sales line |
 | `fact_orders` | Một đơn hàng |
 | `fact_payments` | Một thanh toán cho một đơn hàng |
 | `fact_returns` | Một sự kiện trả hàng |
@@ -21,7 +24,7 @@ Các bảng `epd`, `eprom` và `tf` là biến thể của `products`, `promotio
 | `fact_inventory_snapshot` | Một sản phẩm tại một ngày snapshot |
 | `fact_web_traffic` | Một nguồn traffic tại một ngày |
 
-## Star Schema
+## Sơ đồ quan hệ
 
 ```mermaid
 erDiagram
@@ -30,9 +33,10 @@ erDiagram
     DIM_PRODUCT ||--o{ FACT_SALES : product
     DIM_GEOGRAPHY ||--o{ FACT_SALES : geography
     DIM_SALES_EMPLOYEE ||--o{ FACT_SALES : employee
-    DIM_PROMOTION ||--o{ FACT_SALES : primary_promotion
+    FACT_SALES ||--|{ BRIDGE_SALES_PROMOTION : receives
+    DIM_PROMOTION ||--o{ BRIDGE_SALES_PROMOTION : promotion
 
-    DIM_DATE ||--o{ FACT_ORDERS : order_date
+    DIM_DATE ||--o{ FACT_ORDERS : date_roles
     DIM_CUSTOMER ||--o{ FACT_ORDERS : customer
     DIM_GEOGRAPHY ||--o{ FACT_ORDERS : geography
     DIM_SALES_EMPLOYEE ||--o{ FACT_ORDERS : employee
@@ -41,26 +45,29 @@ erDiagram
     DIM_DATE ||--o{ FACT_PAYMENTS : order_date
     DIM_CUSTOMER ||--o{ FACT_PAYMENTS : customer
 
+    DIM_DATE ||--o{ FACT_RETURNS : date_roles
     DIM_PRODUCT ||--o{ FACT_RETURNS : product
     DIM_CUSTOMER ||--o{ FACT_RETURNS : customer
-    DIM_DATE ||--o{ FACT_RETURNS : return_date
+
+    DIM_DATE ||--o{ FACT_REVIEWS : date_roles
     DIM_PRODUCT ||--o{ FACT_REVIEWS : product
     DIM_CUSTOMER ||--o{ FACT_REVIEWS : customer
-    DIM_DATE ||--o{ FACT_REVIEWS : review_date
 
+    DIM_DATE ||--o{ FACT_SHIPMENTS : date_roles
+    DIM_CUSTOMER ||--o{ FACT_SHIPMENTS : customer
+    DIM_GEOGRAPHY ||--o{ FACT_SHIPMENTS : geography
     DIM_SHIPPER ||--o{ FACT_SHIPMENTS : shipper
-    DIM_DATE ||--o{ FACT_SHIPMENTS : ship_date
-    DIM_PRODUCT ||--o{ FACT_INVENTORY_SNAPSHOT : product
+
     DIM_DATE ||--o{ FACT_INVENTORY_SNAPSHOT : snapshot_date
+    DIM_PRODUCT ||--o{ FACT_INVENTORY_SNAPSHOT : product
     DIM_DATE ||--o{ FACT_WEB_TRAFFIC : traffic_date
 ```
 
-## Quy tắc chính
+## Quy tắc mô hình
 
-- Surrogate key `0` đại diện cho thành viên chưa xác định hoặc không áp dụng.
-- `dim_customer`, `dim_product`, `dim_promotion`, `dim_geography`, `dim_sales_employee` và `dim_shipper` được xây theo cấu trúc SCD Type 2 nhưng lần nạp MVP tạo một phiên bản hiện hành.
-- `fact_sales` tính `gross_sales_amount`, `net_sales_amount`, `cogs_amount` và `gross_profit_amount` tại grain dòng đơn hàng.
-- `fact_orders` tổng hợp các dòng bán hàng, thanh toán, giao hàng và hoàn tiền về grain đơn hàng.
-- Cảnh báo từ Silver được giữ lại trong các fact có trường `data_quality_status`; chúng không bị loại bỏ tự động.
-- DDL sử dụng kiểu Snowflake-native: `NUMBER`, `DATE`, `BOOLEAN`, `TIMESTAMP_NTZ` và `VARCHAR`.
-- PK, FK và UNIQUE trên Snowflake standard tables là metadata, vì vậy toàn vẹn quan hệ và grain được xác nhận lại trong `data_warehouse/sql/05_quality_checks.sql`.
+- Surrogate key `0` là unknown/not-applicable member.
+- `FACT_SALES` lưu các measure cộng được ở grain dòng bán hàng: gross sales, discount, net sales, COGS và gross profit.
+- `FACT_ORDERS` là accumulating/aggregate fact ở grain đơn hàng, dùng cho dashboard tránh phải ghép nhiều fact chi tiết.
+- Mọi fact giữ `SOURCE_BATCH_ID`, `SOURCE_RECORD_HASH` và `ETL_LOADED_AT_UTC` để truy vết; bridge giữ batch và load timestamp.
+- PK, FK và UNIQUE trên standard tables là metadata. Quality gate kiểm tra grain, quan hệ và đối soát sau khi nạp.
+- `epd`, `eprom` và `tf` là nguồn biến thể, chưa hợp nhất vào Gold để tránh nhân đôi dữ liệu canonical.
