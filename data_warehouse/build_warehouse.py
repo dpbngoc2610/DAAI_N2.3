@@ -3,9 +3,48 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+
+def relaunch_in_project_venv() -> None:
+    """Use the project interpreter even when the file is run with system Python."""
+    script = Path(__file__).resolve()
+    venv_python = script.parent / ".venv" / "Scripts" / "python.exe"
+    if Path(sys.executable).resolve() == venv_python.resolve():
+        return
+
+    if not venv_python.exists():
+        installer = script.parent / "install_snowflake_tools.ps1"
+        powershell = shutil.which("pwsh") or shutil.which("powershell")
+        if os.name != "nt" or powershell is None or not installer.exists():
+            raise RuntimeError(
+                "Project environment is missing. Run "
+                "'.\\data_warehouse\\install_snowflake_tools.ps1' first."
+            )
+        print("Project environment is missing; installing dependencies...", flush=True)
+        completed = subprocess.run(
+            [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(installer)],
+            check=False,
+        )
+        if completed.returncode != 0 or not venv_python.exists():
+            raise RuntimeError("Could not create the project Snowflake environment.")
+
+    if Path(sys.executable).resolve() != venv_python.resolve():
+        print(f"Restarting with project Python: {venv_python}", flush=True)
+        completed = subprocess.run(
+            [str(venv_python), str(script), *sys.argv[1:]],
+            check=False,
+        )
+        raise SystemExit(completed.returncode)
+
+
+relaunch_in_project_venv()
+
+from snowflake_connection import connect
 from validate_source import CANONICAL_DATASETS, find_latest_prepared_dir
 
 
@@ -56,22 +95,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prepared-dir", type=Path)
     parser.add_argument(
         "--connection-name",
-        default=os.getenv("SNOWFLAKE_DEFAULT_CONNECTION_NAME", "default"),
+        default=os.getenv("SNOWFLAKE_DEFAULT_CONNECTION_NAME", "student_sales"),
         help="Connection name from Snowflake connections.toml.",
     )
     parser.add_argument("--skip-bootstrap", action="store_true", help="Skip warehouse/database/schema creation.")
     parser.add_argument("--keep-stage-files", action="store_true", help="Keep uploaded files after a successful load.")
     return parser.parse_args()
-
-
-def connect(connection_name: str):
-    try:
-        import snowflake.connector
-    except ImportError as exc:
-        raise RuntimeError(
-            "Missing snowflake-connector-python. Run: python -m pip install -r data_warehouse/requirements.txt"
-        ) from exc
-    return snowflake.connector.connect(connection_name=connection_name, autocommit=True)
 
 
 def execute_sql_file(cursor, path: Path) -> None:

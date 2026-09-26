@@ -1,7 +1,7 @@
 # Báo cáo kiểm thử Data Warehouse trên Snowflake
 
 - Database: `STUDENT_SALES_DW`
-- Thời điểm UTC: `2026-09-26T02:05:47Z`
+- Thời điểm UTC: `2026-09-26T03:48:25Z`
 - Kết luận: `PASS`
 - Số kiểm tra thất bại: `0`
 
@@ -10,7 +10,7 @@
 | Core Star Schema tables | model | PASS | 7 dimensions, 8 facts and 1 bridge exist |
 | Analytical views | model | PASS | All 7 analytical views exist |
 | Analytical views executable | model | PASS | All views execute |
-| Latest ETL batch | pipeline | PASS | run=1, source_batch=SILVER_20260921_122904, status=SUCCESS, mode=PREPARED_CSV |
+| Latest ETL batch | pipeline | PASS | run=7, source_batch=SILVER_20260921_122904, status=SUCCESS, mode=PREPARED_CSV |
 | Silver-to-Gold row synchronization | completeness | PASS | 12/12 canonical datasets match |
 | Snowflake data-quality gate | quality | PASS | checks=35/35; failed=0 |
 | net_sales reconciliation | financial | PASS | expected=15,680,869,265.43; Snowflake=15,680,869,265.43 |

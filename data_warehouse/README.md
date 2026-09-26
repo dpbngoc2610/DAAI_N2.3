@@ -32,6 +32,7 @@ Thư mục này chứa pipeline triển khai Data Warehouse trên Snowflake sau 
 ## File chính
 
 - `build_warehouse.py`: triển khai Snowflake theo đúng thứ tự trên.
+- `snowflake_connection.py`: tìm profile Snowflake ổn định giữa terminal/VS Code và cấu hình TLS dùng chung.
 - `build_windows_ca_bundle.py`: dùng kho chứng chỉ Windows cho kết nối TLS, không tắt SSL verification.
 - `validate_lineage.py`: kiểm tra file gốc → Silver, quyết định nguồn canonical và khả năng tái lập.
 - `validate_source.py`: kiểm tra Silver và tạo `expected_metrics.json`.
@@ -65,12 +66,22 @@ Kiểm tra sau khi cài:
 
 ## Chuẩn bị connection
 
-Sao chép nội dung từ `connections.toml.example` vào file `connections.toml` của Snowflake và đặt tên connection là `student_sales`. Không lưu mật khẩu thật trong project.
+Sao chép nội dung từ `connections.toml.example` vào file `connections.toml` của Snowflake và đặt tên connection là `student_sales`. Dùng PAT lưu ngoài project; không lưu password hoặc nội dung token trong repository.
+
+Khi chạy từ VS Code, code tự tìm `config.toml`/`connections.toml` ở `SNOWFLAKE_CONFIG_FILE`, `SNOWFLAKE_HOME`, `%LOCALAPPDATA%\snowflake` và thư mục Snowflake trong user profile. Vì vậy debugger không còn phụ thuộc vào việc kế thừa đúng biến môi trường từ terminal.
 
 ## Chạy triển khai
 
+Lệnh khuyến nghị bên dưới sẽ tự tạo lại `.venv` và cài dependency nếu môi trường chưa tồn tại:
+
 ```powershell
 .\data_warehouse\run_snowflake_deploy.ps1 -ConnectionName student_sales
+```
+
+Nếu chỉ muốn chạy trực tiếp file build, dùng đúng Python trong môi trường dự án. Connection mặc định là `student_sales` và chứng chỉ TLS Windows được cấu hình tự động:
+
+```powershell
+.\data_warehouse\.venv\Scripts\python.exe .\data_warehouse\build_warehouse.py
 ```
 
 ## Kiểm tra ngoại tuyến không cần Snowflake account

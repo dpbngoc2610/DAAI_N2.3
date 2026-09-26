@@ -3,9 +3,16 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+DATA_WAREHOUSE_ROOT = Path(__file__).resolve().parent.parent / "data_warehouse"
+if str(DATA_WAREHOUSE_ROOT) not in sys.path:
+    sys.path.insert(0, str(DATA_WAREHOUSE_ROOT))
+
+from snowflake_connection import connect as connect_snowflake
 
 
 DIMENSIONS = {
@@ -165,12 +172,7 @@ def validate_static(schema_path: Path) -> list[Check]:
 
 
 def validate_live(connection_name: str) -> list[Check]:
-    try:
-        import snowflake.connector
-    except ImportError as exc:
-        raise RuntimeError("Install data_warehouse/requirements.txt before live validation") from exc
-
-    connection = snowflake.connector.connect(connection_name=connection_name, autocommit=True)
+    connection = connect_snowflake(connection_name)
     cursor = connection.cursor()
     try:
         # Connections authenticated with a PAT do not necessarily inherit a

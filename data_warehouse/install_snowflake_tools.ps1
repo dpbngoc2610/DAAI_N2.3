@@ -1,5 +1,5 @@
 param(
-    [string]$PythonPath = "C:\Users\ngocb\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
+    [string]$PythonPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,12 +9,21 @@ $venvPython = Join-Path $venvRoot "Scripts\python.exe"
 $snowCli = Join-Path $venvRoot "Scripts\snow.exe"
 $requirements = Join-Path $dataWarehouseRoot "requirements.txt"
 
-if (-not (Test-Path -LiteralPath $PythonPath)) {
+if ([string]::IsNullOrWhiteSpace($PythonPath)) {
     $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
     if ($null -eq $pythonCommand) {
-        throw "Khong tim thay Python 3.9 tro len. Hay cai Python va chay lai script."
+        throw "Khong tim thay Python 3.10 tro len. Hay cai Python va chay lai script."
     }
     $PythonPath = $pythonCommand.Source
+}
+
+if (-not (Test-Path -LiteralPath $PythonPath)) {
+    throw "Khong tim thay Python tai: $PythonPath"
+}
+
+& $PythonPath -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)"
+if ($LASTEXITCODE -ne 0) {
+    throw "Can Python 3.10 tro len de cai Snowflake CLI."
 }
 
 if (-not (Test-Path -LiteralPath $venvPython)) {

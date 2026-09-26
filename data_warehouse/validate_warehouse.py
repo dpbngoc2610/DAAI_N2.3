@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from snowflake_connection import connect
+
 
 DATABASE = "STUDENT_SALES_DW"
 EXPECTED_DIMENSIONS = {
@@ -35,16 +37,6 @@ class Check:
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def connect(connection_name: str):
-    try:
-        import snowflake.connector
-    except ImportError as exc:
-        raise RuntimeError(
-            "Missing snowflake-connector-python. Run: python -m pip install -r data_warehouse/requirements.txt"
-        ) from exc
-    return snowflake.connector.connect(connection_name=connection_name, autocommit=True)
 
 
 def scalar(cursor, sql: str):

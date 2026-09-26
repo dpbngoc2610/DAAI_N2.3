@@ -1,10 +1,11 @@
 # Copy this connection to the Snowflake connections.toml location for your OS.
-# Do not commit a real password or private key to this project.
+# Keep the real PAT outside the project and do not commit its contents.
 
 [student_sales]
 account = "<organization-account>"
 user = "<user>"
-password = "<password>"
+authenticator = "PROGRAMMATIC_ACCESS_TOKEN"
+token_file_path = "C:/absolute/path/outside/project/snowflake.pat"
 role = "<role-with-create-database-and-warehouse-privileges>"
 warehouse = "STUDENT_SALES_ETL_WH"
 database = "STUDENT_SALES_DW"

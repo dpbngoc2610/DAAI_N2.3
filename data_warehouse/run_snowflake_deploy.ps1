@@ -8,7 +8,12 @@ $projectRoot = Split-Path -Parent $dataWarehouseRoot
 $python = Join-Path $dataWarehouseRoot ".venv\Scripts\python.exe"
 
 if (-not (Test-Path -LiteralPath $python)) {
-    throw "Chua cai moi truong Snowflake. Hay chay .\data_warehouse\install_snowflake_tools.ps1 truoc."
+    Write-Host "Snowflake environment is missing. Installing project dependencies..."
+    & (Join-Path $dataWarehouseRoot "install_snowflake_tools.ps1")
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    if (-not (Test-Path -LiteralPath $python)) {
+        throw "Khong the tao moi truong Snowflake tai $python"
+    }
 }
 
 $windowsCaBundle = Join-Path $dataWarehouseRoot ".venv\windows-ca-bundle.pem"

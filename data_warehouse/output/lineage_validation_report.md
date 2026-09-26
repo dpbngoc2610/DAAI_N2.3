@@ -1,6 +1,6 @@
 # Báo cáo kiểm thử lineage File gốc → Silver → Star Schema/Data Warehouse
 
-- Thời điểm UTC: `2026-09-26T02:00:01Z`
+- Thời điểm UTC: `2026-09-26T02:58:11Z`
 - Silver canonical: `C:\dpbngoc\DA & AI\DAAI_N2.3\silver_data\.silver_pipeline_work_01a0c3da\prepared`
 - Nguồn CSV gốc: `C:\dpbngoc\DA & AI\DAAI_N2.3\silver_data\.silver_pipeline_work_01a0c3da\excel`
 - Kết luận: `PASS`
